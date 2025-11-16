@@ -32,11 +32,17 @@ func main() {
 	url := "http://" + strings.Replace(ln.Addr().String(), "[::]", "localhost", 1)
 	log.Printf("Server listening at %s\n", style.HyperLink(url))
 
-	srv := http.Server{Handler: TrafficLogMiddleware(log, style, api.New())}
-	done := EnableGracefulShutdown(func() {
-		log.Println("Closing...")
-		srv.Shutdown(context.Background())
-	})
+	api, err := api.New()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer api.Close()
+
+	srv := http.Server{Handler: TrafficLogMiddleware(log, style, api)}
+	defer srv.Shutdown(context.Background())
+
+	done := EnableGracefulShutdown(func() { log.Println("Shutting server down...") })
 
 	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 		log.Println(err)
@@ -53,10 +59,14 @@ func TrafficLogMiddleware(log *middleware.Logger, s Style, handler http.Handler)
 
 		var pen ansi.Pen
 		switch rw.StatusCode() / 100 {
-		case 5: pen = s.ServerError
-		case 4: pen = s.ClientError
-		case 3: pen = s.Redirect
-		case 2: pen = s.Success
+		case 5:
+			pen = s.ServerError
+		case 4:
+			pen = s.ClientError
+		case 3:
+			pen = s.Redirect
+		case 2:
+			pen = s.Success
 
 		default:
 			pen.SetStyle(false)
