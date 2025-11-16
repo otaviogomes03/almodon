@@ -7,7 +7,6 @@ import (
 	"github.com/alan-b-lima/almodon/internal/auth"
 	"github.com/alan-b-lima/almodon/internal/domain/user"
 	"github.com/alan-b-lima/almodon/internal/xerrors"
-	"github.com/alan-b-lima/almodon/pkg/errors"
 	"github.com/alan-b-lima/almodon/pkg/opt"
 	"github.com/alan-b-lima/almodon/pkg/uuid"
 )
@@ -16,7 +15,7 @@ type Map struct {
 	uuidIndex  map[uuid.UUID]int
 	siapeIndex map[int]int
 
-	repo []user.User
+	repo []user.Entity
 	mu   sync.RWMutex
 }
 
@@ -44,9 +43,7 @@ func (m *Map) List(offset, limit int) (user.Entities, error) {
 	}
 
 	res := make([]user.Entity, hi-lo)
-	for i := range m.repo[lo:hi] {
-		transform(&res[i], &m.repo[i])
-	}
+	copy(res, m.repo[lo:hi])
 
 	return user.Entities{
 		Offset:       lo,
@@ -65,9 +62,7 @@ func (m *Map) Get(uuid uuid.UUID) (user.Entity, error) {
 		return user.Entity{}, xerrors.ErrUserNotFound
 	}
 
-	var res user.Entity
-	transform(&res, &m.repo[index])
-	return res, nil
+	return m.repo[index], nil
 }
 
 func (m *Map) GetBySIAPE(siape int) (user.Entity, error) {
@@ -79,59 +74,47 @@ func (m *Map) GetBySIAPE(siape int) (user.Entity, error) {
 		return user.Entity{}, xerrors.ErrUserNotFound
 	}
 
-	var res user.Entity
-	transform(&res, &m.repo[index])
-	return res, nil
+	return m.repo[index], nil
 }
 
-func (m *Map) Create(siape int, name, email, password string, role auth.Role) (user.Entity, error) {
+func (m *Map) Create(user user.Entity) error {
 	defer m.mu.Unlock()
 	m.mu.Lock()
 
-	u, err := user.New(siape, name, email, password, role)
-	if err != nil {
-		return user.Entity{}, err
+	if _, in := m.siapeIndex[user.SIAPE]; in {
+		return xerrors.ErrSiapeTaken
 	}
 
-	if _, in := m.siapeIndex[u.SIAPE()]; in {
-		return user.Entity{}, xerrors.ErrSiapeTaken
-	}
+	m.uuidIndex[user.UUID] = len(m.repo)
+	m.siapeIndex[user.SIAPE] = len(m.repo)
+	m.repo = append(m.repo, user)
 
-	m.uuidIndex[u.UUID()] = len(m.repo)
-	m.siapeIndex[u.SIAPE()] = len(m.repo)
-	m.repo = append(m.repo, u)
-
-	var res user.Entity
-	transform(&res, &u)
-	return res, nil
+	return nil
 }
 
-func (m *Map) Patch(uuid uuid.UUID, name, email, password opt.Opt[string], role opt.Opt[auth.Role]) (user.Entity, error) {
+func (m *Map) Patch(uuid uuid.UUID, user user.PartialEntity) error {
 	defer m.mu.Unlock()
 	m.mu.Lock()
 
 	index, in := m.uuidIndex[uuid]
 	if !in {
-		return user.Entity{}, xerrors.ErrUserNotFound
+		return xerrors.ErrUserNotFound
 	}
 
-	u := m.repo[index]
+	u := &m.repo[index]
 
-	err := errors.Join(
-		some_then(name, u.SetName),
-		some_then(email, u.SetEmail),
-		some_then(password, u.SetPassword),
-		some_then(role, u.SetRole),
-	)
-	if err != nil {
-		return user.Entity{}, err
+	role, ok := user.Role.Unwrap()
+	if ok && role != u.Role && u.Role == auth.Chief && !m.enough_chiefs() {
+		return xerrors.ErrNotEnoughChiefs
+	} else {
+		u.Role = role
 	}
 
-	m.repo[index] = u
+	some_then(&u.Name, user.Name)
+	some_then(&u.Email, user.Email)
+	some_then(&u.Password, user.Password)
 
-	var res user.Entity
-	transform(&res, &u)
-	return res, nil
+	return nil
 }
 
 func (m *Map) Delete(uuid uuid.UUID) error {
@@ -144,9 +127,12 @@ func (m *Map) Delete(uuid uuid.UUID) error {
 	}
 
 	u := &m.repo[index]
+	if u.Role == auth.Chief && !m.enough_chiefs() {
+		return xerrors.ErrNotEnoughChiefs
+	}
 
-	delete(m.uuidIndex, u.UUID())
-	delete(m.siapeIndex, u.SIAPE())
+	delete(m.uuidIndex, u.UUID)
+	delete(m.siapeIndex, u.SIAPE)
 
 	m.repo[index] = m.repo[len(m.repo)-1]
 	m.repo = m.repo[:len(m.repo)-1]
@@ -154,21 +140,28 @@ func (m *Map) Delete(uuid uuid.UUID) error {
 	return nil
 }
 
-func some_then[F any](src opt.Opt[F], fn func(F) error) error {
-	val, ok := src.Unwrap()
-	if !ok {
-		return nil
+func (m *Map) enough_chiefs() bool {
+	var count int
+	for _, user := range m.repo {
+		if user.Role == auth.Chief {
+			count++
+		}
 	}
-	return fn(val)
+
+	if count < 2 {
+		return false
+	}
+
+	return true
 }
 
-func transform(r *user.Entity, u *user.User) {
-	r.UUID = u.UUID()
-	r.Name = u.Name()
-	r.SIAPE = u.SIAPE()
-	r.Email = u.Email()
-	r.Password = u.Password()
-	r.Role = u.Role()
+func some_then[F any](dst *F, src opt.Opt[F]) {
+	val, ok := src.Unwrap()
+	if !ok {
+		return
+	}
+
+	*dst = val
 }
 
 func clamp[T cmp.Ordered](mn, val, mx T) T {

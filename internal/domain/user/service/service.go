@@ -4,24 +4,25 @@ import (
 	"github.com/alan-b-lima/almodon/internal/auth"
 	"github.com/alan-b-lima/almodon/internal/domain/session"
 	"github.com/alan-b-lima/almodon/internal/domain/user"
-	"github.com/alan-b-lima/almodon/pkg/errors"
+	"github.com/alan-b-lima/almodon/internal/xerrors"
 	"github.com/alan-b-lima/almodon/pkg/opt"
+	"github.com/alan-b-lima/almodon/pkg/uuid"
 )
 
 type Service struct {
-	Repo     user.Repository
-	Sessions session.Repository
+	users    user.Repository
+	sessions session.Repository
 }
 
 func NewService(users user.Repository, sessions session.Repository) user.Service {
 	return &Service{
-		Repo:     users,
-		Sessions: sessions,
+		users:    users,
+		sessions: sessions,
 	}
 }
 
 func (s *Service) List(act auth.Actor, req user.ListRequest) (user.ListResponse, error) {
-	res, err := user.List(s.Repo, req.Offset, req.Limit)
+	res, err := user.List(s.users, req.Offset, req.Limit)
 	if err != nil {
 		return user.ListResponse{}, err
 	}
@@ -40,7 +41,7 @@ func (s *Service) List(act auth.Actor, req user.ListRequest) (user.ListResponse,
 }
 
 func (s *Service) Get(act auth.Actor, req user.GetRequest) (user.Response, error) {
-	res, err := user.Get(s.Repo, req.UUID)
+	res, err := user.Get(s.users, req.UUID)
 	if err != nil {
 		return user.Response{}, err
 	}
@@ -49,7 +50,7 @@ func (s *Service) Get(act auth.Actor, req user.GetRequest) (user.Response, error
 }
 
 func (s *Service) GetBySIAPE(act auth.Actor, req user.GetBySIAPERequest) (user.Response, error) {
-	res, err := user.GetBySIAPE(s.Repo, req.SIAPE)
+	res, err := user.GetBySIAPE(s.users, req.SIAPE)
 	if err != nil {
 		return user.Response{}, err
 	}
@@ -57,42 +58,46 @@ func (s *Service) GetBySIAPE(act auth.Actor, req user.GetBySIAPERequest) (user.R
 	return transform(&res), err
 }
 
-func (s *Service) Create(act auth.Actor, req user.CreateRequest) (user.Response, error) {
+func (s *Service) Create(act auth.Actor, req user.CreateRequest) (uuid.UUID, error) {
 	role, ok := auth.FromString(req.Role)
 	if !ok {
-		return user.Response{}, &errors.Error{}
+		return uuid.UUID{}, xerrors.ErrBadRole
 	}
 
-	res, err := user.Create(s.Repo, req.SIAPE, req.Name, req.Email, req.Password, role)
+	rcs, err := user.Create(s.users, req.SIAPE, req.Name, req.Email, req.Password, role)
 	if err != nil {
-		return user.Response{}, err
+		return uuid.UUID{}, err
 	}
 
-	return transform(&res), nil
+	return rcs, nil
 }
 
-func (s *Service) Patch(act auth.Actor, req user.PatchRequest) (user.Response, error) {
+func (s *Service) Patch(act auth.Actor, req user.PatchRequest) error {
+	var string opt.Opt[string]
 	var role opt.Opt[auth.Role]
-	if val, ok := req.Role.Unwrap(); ok {
-		if l, ok := auth.FromString(val); ok {
-			role = opt.Some(l)
-		}
-	}
 
-	res, err := user.Patch(s.Repo, req.UUID, req.Name, req.Email, req.Password, role)
-	if err != nil {
-		return user.Response{}, err
-	}
+	return user.Patch(s.users, req.UUID, req.Name, req.Email, string, role)
+}
 
-	return transform(&res), nil
+func (s *Service) UpdatePassword(act auth.Actor, req user.UpdatePasswordRequest) error {
+	var string opt.Opt[string]
+	var role opt.Opt[auth.Role]
+
+	return user.Patch(s.users, req.UUID, string, string, opt.Some(req.Password), role)
+}
+
+func (s *Service) UpdateRole(act auth.Actor, req user.UpdateRoleRequest) error {
+	var string opt.Opt[string]
+
+	return user.Patch(s.users, req.UUID, string, string, string, opt.Some(req.Role))
 }
 
 func (s *Service) Delete(act auth.Actor, req user.DeleteRequest) error {
-	return user.Delete(s.Repo, req.UUID)
+	return user.Delete(s.users, req.UUID)
 }
 
 func (s *Service) Authenticate(req user.AuthRequest) (user.AuthResponse, error) {
-	res, err := user.Authenticate(s.Repo, s.Sessions, req.SIAPE, req.Password)
+	res, err := user.Authenticate(s.users, s.sessions, req.SIAPE, req.Password)
 	if err != nil {
 		return user.AuthResponse{}, err
 	}
@@ -101,7 +106,7 @@ func (s *Service) Authenticate(req user.AuthRequest) (user.AuthResponse, error) 
 }
 
 func (s *Service) Actor(req user.ActorRequest) (auth.Actor, error) {
-	return user.Actor(s.Repo, s.Sessions, req.Session)
+	return user.Actor(s.users, s.sessions, req.Session)
 }
 
 func transform(e *user.Entity) user.Response {

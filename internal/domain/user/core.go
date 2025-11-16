@@ -6,6 +6,7 @@ import (
 	"github.com/alan-b-lima/almodon/internal/auth"
 	sessionpkg "github.com/alan-b-lima/almodon/internal/domain/session"
 	"github.com/alan-b-lima/almodon/internal/xerrors"
+	"github.com/alan-b-lima/almodon/pkg/errors"
 	"github.com/alan-b-lima/almodon/pkg/hash"
 	"github.com/alan-b-lima/almodon/pkg/opt"
 	"github.com/alan-b-lima/almodon/pkg/uuid"
@@ -23,12 +24,29 @@ func GetBySIAPE(users GetterBySIAPE, siape int) (Entity, error) {
 	return users.GetBySIAPE(siape)
 }
 
-func Create(users Creater, siape int, name, email, password string, role auth.Role) (Entity, error) {
-	return users.Create(siape, name, email, password, role)
+func Create(users Creater, siape int, name, email, password string, role auth.Role) (uuid.UUID, error) {
+	u, err := New(siape, name, email, password, role)
+	if err != nil {
+		return uuid.UUID{}, err
+	}
+
+	return u.UUID(), users.Create(translate(&u))
 }
 
-func Patch(users Patcher, uuid uuid.UUID, name, email, password opt.Opt[string], role opt.Opt[auth.Role]) (Entity, error) {
-	return users.Patch(uuid, name, email, password, role)
+func Patch(users Patcher, uuid uuid.UUID, name, email, password opt.Opt[string], role opt.Opt[auth.Role]) error {
+	var pu PartialEntity
+
+	err := errors.Join(
+		some_then(&pu.Name, name, ProcessName),
+		some_then(&pu.Email, email, ProcessEmail),
+		some_then(&pu.Password, password, ProcessPassword),
+		some_then(&pu.Role, role, ProcessRole),
+	)
+	if err != nil {
+		return err
+	}
+
+	return users.Patch(uuid, pu)
 }
 
 func Delete(users Deleter, uuid uuid.UUID) error {
@@ -73,4 +91,30 @@ func Actor(users Getter, sessions sessionpkg.Getter, session uuid.UUID) (auth.Ac
 		ures.UUID,
 		ures.Role,
 	), nil
+}
+
+func translate(u *User) Entity {
+	return Entity{
+		UUID:     u.UUID(),
+		SIAPE:    u.SIAPE(),
+		Name:     u.Name(),
+		Email:    u.Email(),
+		Password: u.Password(),
+		Role:     u.Role(),
+	}
+}
+
+func some_then[F, R any](dst *opt.Opt[R], src opt.Opt[F], fn func(F) (R, error)) error {
+	val, ok := src.Unwrap()
+	if !ok {
+		return nil
+	}
+
+	res, err := fn(val)
+	if err != nil {
+		return err
+	}
+
+	*dst = opt.Some(res)
+	return nil
 }

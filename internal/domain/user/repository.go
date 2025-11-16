@@ -23,23 +23,23 @@ type (
 	}
 
 	Getter interface {
-		Get(uuid uuid.UUID) (Entity, error)
+		Get(uuid.UUID) (Entity, error)
 	}
 
 	GetterBySIAPE interface {
-		GetBySIAPE(siape int) (Entity, error)
+		GetBySIAPE(int) (Entity, error)
 	}
 
 	Creater interface {
-		Create(siape int, name, email, password string, role auth.Role) (Entity, error)
+		Create(Entity) error
 	}
 
 	Patcher interface {
-		Patch(uuid uuid.UUID, name, email, password opt.Opt[string], role opt.Opt[auth.Role]) (Entity, error)
+		Patch(uuid.UUID, PartialEntity) error
 	}
 
 	Deleter interface {
-		Delete(uuid uuid.UUID) error
+		Delete(uuid.UUID) error
 	}
 )
 
@@ -58,6 +58,14 @@ type (
 		Email    string
 		Password [60]byte
 		Role     auth.Role
+	}
+
+	PartialEntity struct {
+		SIAPE    opt.Opt[int]
+		Name     opt.Opt[string]
+		Email    opt.Opt[string]
+		Password opt.Opt[[60]byte]
+		Role     opt.Opt[auth.Role]
 	}
 
 	AuthEntity struct {

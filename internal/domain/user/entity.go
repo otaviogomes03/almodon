@@ -2,6 +2,7 @@ package user
 
 import (
 	"regexp"
+	"slices"
 	"unicode/utf8"
 
 	"github.com/alan-b-lima/almodon/internal/auth"
@@ -111,9 +112,11 @@ func ProcessPassword(password string) ([60]byte, error) {
 	return hash, nil
 }
 
+var acceptRoles = [...]auth.Role{auth.User, auth.Admin, auth.Chief}
+
 func ProcessRole(role auth.Role) (auth.Role, error) {
-	if !role.IsValid() {
-		return 0, nil
+	if !slices.Contains(acceptRoles[:], role) {
+		return 0, xerrors.ErrRoleInvalid.New(acceptRoles)
 	}
 
 	return role, nil
