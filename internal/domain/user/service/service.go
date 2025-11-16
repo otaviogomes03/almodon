@@ -72,14 +72,29 @@ func (s *Service) Create(act auth.Actor, req user.CreateRequest) (user.Response,
 }
 
 func (s *Service) Patch(act auth.Actor, req user.PatchRequest) (user.Response, error) {
-	var role opt.Opt[auth.Role]
-	if val, ok := req.Role.Unwrap(); ok {
-		if l, ok := auth.FromString(val); ok {
-			role = opt.Some(l)
-		}
+	var string opt.Opt[string]
+
+	res, err := user.Patch(s.Repo, req.UUID, req.Name, req.Email, string)
+	if err != nil {
+		return user.Response{}, err
 	}
 
-	res, err := user.Patch(s.Repo, req.UUID, req.Name, req.Email, req.Password, role)
+	return transform(&res), nil
+}
+
+func (s *Service) UpdatePassword(act auth.Actor, req user.UpdatePasswordRequest) error {
+	var string opt.Opt[string]
+	
+	_, err := user.Patch(s.Repo, req.UUID, string, string, opt.Some(req.Password))
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Service) UpdateRole(act auth.Actor, req user.UpdateRoleRequest) (user.Response, error) {
+	res, err := user.UpdateRole(s.Repo.(user.UpdaterRole), req.UUID, req.Role)
 	if err != nil {
 		return user.Response{}, err
 	}

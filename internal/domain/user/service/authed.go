@@ -4,7 +4,6 @@ import (
 	"github.com/alan-b-lima/almodon/internal/auth"
 	"github.com/alan-b-lima/almodon/internal/domain/user"
 	"github.com/alan-b-lima/almodon/internal/support/service"
-	"github.com/alan-b-lima/almodon/internal/xerrors"
 )
 
 type AuthService struct {
@@ -19,16 +18,10 @@ func New(service user.Service) user.Service {
 	}
 }
 
-var (
-	permStrictChief = auth.Permit(auth.Chief)
-	permChief       = auth.Permit(auth.Promoted)
-	permAdmin       = auth.Permit(auth.Admin)
-	permLogged      = auth.Permit(auth.User)
-	permPermissive  = auth.Permit(auth.Unlogged)
-)
+var permChief = auth.Permit(auth.Chief)
 
 func (s *AuthService) List(act auth.Actor, req user.ListRequest) (user.ListResponse, error) {
-	if err := service.Authorize(permStrictChief, act); err != nil {
+	if err := service.Authorize(permChief, act); err != nil {
 		return user.ListResponse{}, err
 	}
 
@@ -40,7 +33,7 @@ func (s *AuthService) Get(act auth.Actor, req user.GetRequest) (user.Response, e
 		goto Do
 	}
 
-	if err := service.Authorize(permStrictChief, act); err != nil {
+	if err := service.Authorize(permChief, act); err != nil {
 		return user.Response{}, err
 	}
 
@@ -58,7 +51,7 @@ func (s *AuthService) GetBySIAPE(act auth.Actor, req user.GetBySIAPERequest) (us
 		goto Do
 	}
 
-	if err := service.Authorize(permStrictChief, act); err != nil {
+	if err := service.Authorize(permChief, act); err != nil {
 		return user.Response{}, err
 	}
 
@@ -67,32 +60,19 @@ Do:
 }
 
 func (s *AuthService) Create(act auth.Actor, req user.CreateRequest) (user.Response, error) {
-	if err := service.Authorize(permStrictChief, act); err != nil {
+	if err := service.Authorize(permChief, act); err != nil {
 		return user.Response{}, err
 	}
 
 	return s.service.Create(act, req)
 }
 
-// TODO: Patch has serious security ploblems, rationalize and break them into smaller use cases
 func (s *AuthService) Patch(act auth.Actor, req user.PatchRequest) (user.Response, error) {
-	if r, ok := req.Role.Unwrap(); ok {
-		role, ok := auth.FromString(r)
-		if !ok {
-			goto Continue
-		}
-
-		if !s.hierarchy(role, act.Role()) {
-			return user.Response{}, xerrors.ErrUnpriviledUserPromotion.New(act.Role(), role)
-		}
-	}
-
-Continue:
 	if act.User() == req.UUID {
 		goto Do
 	}
 
-	if err := service.Authorize(permStrictChief, act); err != nil {
+	if err := service.Authorize(permChief, act); err != nil {
 		return user.Response{}, err
 	}
 
@@ -100,12 +80,33 @@ Do:
 	return s.service.Patch(act, req)
 }
 
+func (s *AuthService) UpdatePassword(act auth.Actor, req user.UpdatePasswordRequest) error {
+	if act.User() == req.UUID {
+		goto Do
+	}
+
+	if err := service.Authorize(permChief, act); err != nil {
+		return err
+	}
+
+Do:
+	return s.service.UpdatePassword(act, req)
+}
+
+func (s *AuthService) UpdateRole(act auth.Actor, req user.UpdateRoleRequest) (user.Response, error) {
+	if err := service.Authorize(permChief, act); err != nil {
+		return user.Response{}, err
+	}
+
+	return s.service.UpdateRole(act, req)
+}
+
 func (s *AuthService) Delete(act auth.Actor, req user.DeleteRequest) error {
 	if act.User() == req.UUID {
 		goto Do
 	}
 
-	if err := service.Authorize(permStrictChief, act); err != nil {
+	if err := service.Authorize(permChief, act); err != nil {
 		return err
 	}
 
