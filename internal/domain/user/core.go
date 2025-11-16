@@ -27,8 +27,12 @@ func Create(users Creater, siape int, name, email, password string, role auth.Ro
 	return users.Create(siape, name, email, password, role)
 }
 
-func Patch(users Patcher, uuid uuid.UUID, name, email, password opt.Opt[string], role opt.Opt[auth.Role]) (Entity, error) {
-	return users.Patch(uuid, name, email, password, role)
+func Patch(users Patcher, uuid uuid.UUID, name, email, password opt.Opt[string]) (Entity, error) {
+	return users.Patch(uuid, name, email, password)
+}
+
+func UpdateRole(users UpdaterRole, uuid uuid.UUID, role auth.Role) (Entity, error) {
+	return users.UpdateRole(uuid, role)
 }
 
 func Delete(users Deleter, uuid uuid.UUID) error {

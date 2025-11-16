@@ -3,6 +3,7 @@ package user
 import (
 	"time"
 
+	"github.com/alan-b-lima/almodon/internal/auth"
 	"github.com/alan-b-lima/almodon/pkg/opt"
 	"github.com/alan-b-lima/almodon/pkg/uuid"
 )
@@ -30,11 +31,19 @@ type (
 	}
 
 	PatchRequest struct {
-		UUID     uuid.UUID       `json:"-"`
-		Name     opt.Opt[string] `json:"name"`
-		Email    opt.Opt[string] `json:"email"`
-		Password opt.Opt[string] `json:"password"`
-		Role     opt.Opt[string] `json:"role"`
+		UUID  uuid.UUID       `json:"-"`
+		Name  opt.Opt[string] `json:"name"`
+		Email opt.Opt[string] `json:"email"`
+	}
+
+	UpdatePasswordRequest struct {
+		UUID     uuid.UUID `json:"-"`
+		Password string    `json:"password"`
+	}
+
+	UpdateRoleRequest struct {
+		UUID uuid.UUID `json:"-"`
+		Role auth.Role `json:"role"`
 	}
 
 	DeleteRequest struct {

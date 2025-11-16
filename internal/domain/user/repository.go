@@ -14,6 +14,7 @@ type Repository interface {
 	GetterBySIAPE
 	Creater
 	Patcher
+	UpdaterRole
 	Deleter
 }
 
@@ -35,7 +36,11 @@ type (
 	}
 
 	Patcher interface {
-		Patch(uuid uuid.UUID, name, email, password opt.Opt[string], role opt.Opt[auth.Role]) (Entity, error)
+		Patch(uuid uuid.UUID, name, email, password opt.Opt[string]) (Entity, error)
+	}
+
+	UpdaterRole interface {
+		UpdateRole(uuid uuid.UUID, role auth.Role) (Entity, error)
 	}
 
 	Deleter interface {
