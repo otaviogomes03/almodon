@@ -115,3 +115,7 @@ func EncodeJSON(res any, status int, w http.ResponseWriter, r *http.Request) err
 
 	return nil
 }
+
+func NotFound(w http.ResponseWriter, r *http.Request) {
+	WriteJsonError(w, xerrors.ErrResourceNotFound.New(r.URL.Path))
+}

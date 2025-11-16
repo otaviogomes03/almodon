@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/alan-b-lima/almodon/internal/auth"
 	"github.com/alan-b-lima/almodon/internal/domain/user"
 	"github.com/alan-b-lima/almodon/internal/support/resource"
 	"github.com/alan-b-lima/almodon/internal/xerrors"
@@ -16,18 +15,19 @@ type Resource struct {
 	Users user.Service
 }
 
-func New(users user.Service) *Resource {
+func New(users user.Service) http.Handler {
 	rc := Resource{Users: users}
 
 	routes := map[string]http.HandlerFunc{
-		"GET /users/":              rc.List,
+		"GET /users/{$}":           rc.List,
 		"GET /users/{uuid}":        rc.Get,
 		"GET /users/siape/{siape}": rc.GetBySIAPE,
-		"POST /users/":             rc.Create,
+		"POST /users/{$}":          rc.Create,
 		"PATCH /users/{uuid}":      rc.Patch,
 		"DELETE /users/{uuid}":     rc.Delete,
-		"POST /users/auth/":        rc.Authenticate,
-		"GET /users/me/":           rc.Me,
+		"POST /users/auth/{$}":     rc.Authenticate,
+		"GET /users/me/{$}":        rc.Me,
+		"/":                        resource.NotFound,
 	}
 
 	for route, handler := range routes {
@@ -71,7 +71,7 @@ func (rc *Resource) Get(w http.ResponseWriter, r *http.Request) {
 
 	uuid, err := uuid.FromString(r.PathValue("uuid"))
 	if err != nil {
-		resource.WriteJsonError(w, err)
+		resource.WriteJsonError(w, xerrors.ErrBadUUID)
 		return
 	}
 	req := user.GetRequest{UUID: uuid}
@@ -240,26 +240,4 @@ func (rc *Resource) Me(w http.ResponseWriter, r *http.Request) {
 		resource.WriteJsonError(w, err)
 		return
 	}
-}
-
-func n[Res, Req any](u user.Service, req Req, fn func(auth.Actor, Req) (Res, error), w http.ResponseWriter, r *http.Request) error {
-	act, err := resource.Session(u, r)
-	if err != nil {
-		return err
-	}
-
-	if err := resource.DecodeJSON(&req, r); err != nil {
-		return err
-	}
-
-	res, err := fn(act, req)
-	if err != nil {
-		return err
-	}
-
-	if err := resource.EncodeJSON(&res, http.StatusOK, w, r); err != nil {
-		return err
-	}
-
-	return nil
 }
