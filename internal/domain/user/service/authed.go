@@ -4,6 +4,7 @@ import (
 	"github.com/alan-b-lima/almodon/internal/auth"
 	"github.com/alan-b-lima/almodon/internal/domain/user"
 	"github.com/alan-b-lima/almodon/internal/support/service"
+	"github.com/alan-b-lima/almodon/pkg/uuid"
 )
 
 type AuthService struct {
@@ -59,21 +60,21 @@ Do:
 	return res, nil
 }
 
-func (s *AuthService) Create(act auth.Actor, req user.CreateRequest) (user.Response, error) {
+func (s *AuthService) Create(act auth.Actor, req user.CreateRequest) (uuid.UUID, error) {
 	if err := service.Authorize(permChief, act); err != nil {
-		return user.Response{}, err
+		return uuid.UUID{}, err
 	}
 
 	return s.service.Create(act, req)
 }
 
-func (s *AuthService) Patch(act auth.Actor, req user.PatchRequest) (user.Response, error) {
+func (s *AuthService) Patch(act auth.Actor, req user.PatchRequest) error {
 	if act.User() == req.UUID {
 		goto Do
 	}
 
 	if err := service.Authorize(permChief, act); err != nil {
-		return user.Response{}, err
+		return err
 	}
 
 Do:
@@ -93,9 +94,9 @@ Do:
 	return s.service.UpdatePassword(act, req)
 }
 
-func (s *AuthService) UpdateRole(act auth.Actor, req user.UpdateRoleRequest) (user.Response, error) {
+func (s *AuthService) UpdateRole(act auth.Actor, req user.UpdateRoleRequest) error {
 	if err := service.Authorize(permChief, act); err != nil {
-		return user.Response{}, err
+		return err
 	}
 
 	return s.service.UpdateRole(act, req)

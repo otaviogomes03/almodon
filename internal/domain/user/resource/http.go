@@ -128,13 +128,13 @@ func (rc *Resource) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := rc.Users.Create(act, req)
+	uuid, err := rc.Users.Create(act, req)
 	if err != nil {
 		resource.WriteJsonError(w, err)
 		return
 	}
 
-	if err := resource.EncodeJSON(&res, http.StatusCreated, w, r); err != nil {
+	if err := resource.EncodeJSON(&uuid, http.StatusCreated, w, r); err != nil {
 		resource.WriteJsonError(w, err)
 		return
 	}
@@ -159,16 +159,12 @@ func (rc *Resource) Patch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := rc.Users.Patch(act, req)
-	if err != nil {
+	if err := rc.Users.Patch(act, req); err != nil {
 		resource.WriteJsonError(w, err)
 		return
 	}
-
-	if err := resource.EncodeJSON(&res, http.StatusOK, w, r); err != nil {
-		resource.WriteJsonError(w, err)
-		return
-	}
+	
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (rc *Resource) Delete(w http.ResponseWriter, r *http.Request) {
@@ -183,8 +179,8 @@ func (rc *Resource) Delete(w http.ResponseWriter, r *http.Request) {
 		resource.WriteJsonError(w, xerrors.ErrBadUUID)
 		return
 	}
-
 	req := user.DeleteRequest{UUID: uuid}
+
 	if err := rc.Users.Delete(act, req); err != nil {
 		resource.WriteJsonError(w, err)
 		return

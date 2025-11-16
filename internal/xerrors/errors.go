@@ -3,6 +3,12 @@ package xerrors
 import "github.com/alan-b-lima/almodon/pkg/errors"
 
 var (
+	ErrPromotionTooLong = errors.Fmt(errors.InvalidInput, "promotion-too-long", "promotion must not last longer than %v")
+
+	ErrPromotionNotFound = errors.New(errors.NotFound, "promotion-not-found", "promotion not found", nil)
+)
+
+var (
 	ErrSessionTooLong = errors.Fmt(errors.InvalidInput, "session-too-long", "session must not last longer than %v")
 
 	ErrSessionNotFound = errors.New(errors.NotFound, "session-not-found", "session not found", nil)
@@ -33,8 +39,8 @@ var (
 var (
 	ErrResourceNotFound = errors.Fmt(errors.NotFound, "resource-not-found", "resource %q not found")
 
-	ErrBadUUID = errors.New(errors.InvalidInput, "bad-uuid", "given UUID could not be parsed", nil)
-
+	ErrBadUUID        = errors.New(errors.InvalidInput, "bad-uuid", "given UUID could not be parsed", nil)
+	ErrBadRole        = errors.New(errors.InvalidInput, "bad-uuid", "given role could not be parsed", nil)
 	ErrBadQueryParams = errors.Imp(errors.InvalidInput, "bad-query", "bad query parameters")
 
 	ErrNoContentType              = errors.New(errors.PreconditionFailed, "no-content-type", "content type must be informed", nil)
@@ -43,3 +49,5 @@ var (
 	ErrJsonType                   = errors.Fmt(errors.InvalidInput, "json-type-error", "JSON type error at %d, expected %v but got %v")
 	ErrNotAcceptableJson          = errors.New(errors.PreconditionFailed, "not-acceptable-type", "client does not accept application/json", nil)
 )
+
+var ErrTODO = errors.New(errors.Internal, "todo", "implement me", nil)
