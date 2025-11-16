@@ -44,8 +44,10 @@ func (m *Map) List(offset, limit int) (user.Entities, error) {
 	}
 
 	res := make([]user.Entity, hi-lo)
-	for i := range m.repo[lo:hi] {
-		transform(&res[i], &m.repo[i])
+	slice := m.repo[lo:hi]
+
+	for i := range slice {
+		transformP(&res[i], &slice[i])
 	}
 
 	return user.Entities{
@@ -65,9 +67,7 @@ func (m *Map) Get(uuid uuid.UUID) (user.Entity, error) {
 		return user.Entity{}, xerrors.ErrUserNotFound
 	}
 
-	var res user.Entity
-	transform(&res, &m.repo[index])
-	return res, nil
+	return transform(&m.repo[index]), nil
 }
 
 func (m *Map) GetBySIAPE(siape int) (user.Entity, error) {
@@ -79,9 +79,7 @@ func (m *Map) GetBySIAPE(siape int) (user.Entity, error) {
 		return user.Entity{}, xerrors.ErrUserNotFound
 	}
 
-	var res user.Entity
-	transform(&res, &m.repo[index])
-	return res, nil
+	return transform(&m.repo[index]), nil
 }
 
 func (m *Map) Create(siape int, name, email, password string, role auth.Role) (user.Entity, error) {
@@ -101,12 +99,10 @@ func (m *Map) Create(siape int, name, email, password string, role auth.Role) (u
 	m.siapeIndex[u.SIAPE()] = len(m.repo)
 	m.repo = append(m.repo, u)
 
-	var res user.Entity
-	transform(&res, &u)
-	return res, nil
+	return transform(&u), nil
 }
 
-func (m *Map) Patch(uuid uuid.UUID, name, email, password opt.Opt[string], role opt.Opt[auth.Role]) (user.Entity, error) {
+func (m *Map) Patch(uuid uuid.UUID, name, email, password opt.Opt[string]) (user.Entity, error) {
 	defer m.mu.Unlock()
 	m.mu.Lock()
 
@@ -121,7 +117,6 @@ func (m *Map) Patch(uuid uuid.UUID, name, email, password opt.Opt[string], role 
 		some_then(name, u.SetName),
 		some_then(email, u.SetEmail),
 		some_then(password, u.SetPassword),
-		some_then(role, u.SetRole),
 	)
 	if err != nil {
 		return user.Entity{}, err
@@ -129,9 +124,37 @@ func (m *Map) Patch(uuid uuid.UUID, name, email, password opt.Opt[string], role 
 
 	m.repo[index] = u
 
-	var res user.Entity
-	transform(&res, &u)
-	return res, nil
+	return transform(&u), nil
+}
+
+func (m *Map) UpdateRole(uuid uuid.UUID, role auth.Role) (user.Entity, error) {
+	defer m.mu.Unlock()
+	m.mu.Lock()
+
+	index, in := m.uuidIndex[uuid]
+	if !in {
+		return user.Entity{}, xerrors.ErrUserNotFound
+	}
+
+	u := m.repo[index]
+	if u.Role() == role {
+		return transform(&u), nil
+	}
+
+	if u.Role() == auth.Chief {
+		if err := m.assert_enough_chiefs(); err != nil {
+			return user.Entity{}, err
+		}
+	}
+
+	err := u.SetRole(role)
+	if err != nil {
+		return user.Entity{}, err
+	}
+
+	m.repo[index] = u
+
+	return transform(&u), nil
 }
 
 func (m *Map) Delete(uuid uuid.UUID) error {
@@ -144,12 +167,32 @@ func (m *Map) Delete(uuid uuid.UUID) error {
 	}
 
 	u := &m.repo[index]
+	if u.Role() == auth.Chief {
+		if err := m.assert_enough_chiefs(); err != nil {
+			return err
+		}
+	}
 
 	delete(m.uuidIndex, u.UUID())
 	delete(m.siapeIndex, u.SIAPE())
 
 	m.repo[index] = m.repo[len(m.repo)-1]
 	m.repo = m.repo[:len(m.repo)-1]
+
+	return nil
+}
+
+func (m *Map) assert_enough_chiefs() error {
+	var count int
+	for _, user := range m.repo {
+		if user.Role() == auth.Chief {
+			count++
+		}
+	}
+
+	if count < 2 {
+		return xerrors.ErrNotEnoughChiefs
+	}
 
 	return nil
 }
@@ -162,7 +205,18 @@ func some_then[F any](src opt.Opt[F], fn func(F) error) error {
 	return fn(val)
 }
 
-func transform(r *user.Entity, u *user.User) {
+func transform(u *user.User) user.Entity {
+	return user.Entity{
+		UUID:     u.UUID(),
+		Name:     u.Name(),
+		SIAPE:    u.SIAPE(),
+		Email:    u.Email(),
+		Password: u.Password(),
+		Role:     u.Role(),
+	}
+}
+
+func transformP(r *user.Entity, u *user.User) {
 	r.UUID = u.UUID()
 	r.Name = u.Name()
 	r.SIAPE = u.SIAPE()
