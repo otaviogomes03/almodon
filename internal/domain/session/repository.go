@@ -10,6 +10,7 @@ type Repository interface {
 	Getter
 	Creater
 	Updater
+	Deleter
 }
 
 type (
@@ -18,11 +19,15 @@ type (
 	}
 
 	Creater interface {
-		Create(uuid.UUID, time.Duration) (Entity, error)
+		Create(Entity) error
 	}
 
 	Updater interface {
-		Update(uuid.UUID, time.Duration) (Entity, error)
+		Update(uuid.UUID, time.Time) error
+	}
+
+	Deleter interface {
+		Delete(uuid.UUID) error
 	}
 )
 
