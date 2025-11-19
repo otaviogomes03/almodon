@@ -71,7 +71,7 @@ func TrafficLogMiddleware(log *middleware.Logger, s Style, handler http.Handler)
 		pen := s.StatusCodePen(rw.StatusCode())
 
 		var barr [32]byte
-		b := bytes.NewBuffer(barr[:])
+		b := bytes.NewBuffer(barr[:0])
 		pen.Writer = b
 
 		io.WriteString(&pen, fmt.Sprintf(" %03d ", rw.StatusCode()))
