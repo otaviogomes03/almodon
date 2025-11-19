@@ -2,6 +2,7 @@ package resource
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/alan-b-lima/almodon/internal/auth"
 	"github.com/alan-b-lima/almodon/internal/xerrors"
@@ -44,4 +45,18 @@ func session(r *http.Request) (uuid.UUID, error) {
 	}
 
 	return session, nil
+}
+
+func SetSession(w http.ResponseWriter, uuid uuid.UUID, expires time.Time) {
+	cookie := &http.Cookie{
+		Name:     SessionCookie,
+		Value:    uuid.String(),
+		Expires:  expires,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	}
+
+	http.SetCookie(w, cookie)
 }
