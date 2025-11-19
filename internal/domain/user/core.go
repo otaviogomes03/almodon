@@ -1,9 +1,8 @@
 package user
 
 import (
-	"time"
-
 	"github.com/alan-b-lima/almodon/internal/auth"
+	"github.com/alan-b-lima/almodon/internal/domain/promotion"
 	sessionpkg "github.com/alan-b-lima/almodon/internal/domain/session"
 	"github.com/alan-b-lima/almodon/internal/xerrors"
 	"github.com/alan-b-lima/almodon/pkg/errors"
@@ -43,7 +42,7 @@ func Patch(users Patcher, uuid uuid.UUID, name, email, password opt.Opt[string],
 		some_then(&pu.Role, role, ProcessRole),
 	)
 	if err != nil {
-		return err
+		return xerrors.ErrUserUpdate.New(err)
 	}
 
 	return users.Patch(uuid, pu)
@@ -63,20 +62,20 @@ func Authenticate(users GetterBySIAPE, sessions sessionpkg.Creater, siape int, p
 		return AuthEntity{}, xerrors.ErrIncorrectPassword
 	}
 
-	s, err := sessions.Create(res.UUID, 10*time.Minute)
+	sres, err := sessionpkg.CreateAndGet(sessions, res.UUID)
 	if err != nil {
 		return AuthEntity{}, err
 	}
 
 	ares := AuthEntity{
-		UUID:    s.UUID,
+		UUID:    sres.UUID,
 		User:    res.UUID,
-		Expires: s.Expires,
+		Expires: sres.Expires,
 	}
 	return ares, nil
 }
 
-func Actor(users Getter, sessions sessionpkg.Getter, session uuid.UUID) (auth.Actor, error) {
+func Actor(users Getter, sessions sessionpkg.Getter, promotions promotion.GetterByUser, session uuid.UUID) (auth.Actor, error) {
 	res, err := sessionpkg.Get(sessions, session)
 	if err != nil {
 		return auth.NewUnlogged(), xerrors.ErrUnauthenticatedUser.New(err)
@@ -87,9 +86,17 @@ func Actor(users Getter, sessions sessionpkg.Getter, session uuid.UUID) (auth.Ac
 		return auth.NewUnlogged(), xerrors.ErrUnauthenticatedUser.New(err)
 	}
 
+	role := ures.Role
+	if ures.Role == auth.Admin {
+		_, err := promotions.GetByUser(ures.UUID)
+		if err != nil {
+			role = auth.Promoted
+		}
+	}
+
 	return auth.NewLogged(
 		ures.UUID,
-		ures.Role,
+		role,
 	), nil
 }
 
