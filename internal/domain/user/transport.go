@@ -54,10 +54,6 @@ type (
 		SIAPE    int    `json:"siape"`
 		Password string `json:"password"`
 	}
-
-	ActorRequest struct {
-		Session uuid.UUID `json:"-"`
-	}
 )
 
 type (

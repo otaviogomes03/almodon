@@ -1,10 +1,11 @@
-package sessionrepo
+package promotionrepo
 
 import (
+	"cmp"
 	"sync"
 	"time"
 
-	"github.com/alan-b-lima/almodon/internal/domain/session"
+	"github.com/alan-b-lima/almodon/internal/domain/promotion"
 	"github.com/alan-b-lima/almodon/internal/xerrors"
 	"github.com/alan-b-lima/almodon/pkg/heap"
 	"github.com/alan-b-lima/almodon/pkg/uuid"
@@ -15,11 +16,11 @@ type Map struct {
 	userIndex   map[uuid.UUID]int
 	expiresHeap sleepqueue
 
-	repo []session.Entity
+	repo []promotion.Entity
 	mu   sync.RWMutex
 }
 
-func NewMap() session.Repository {
+func NewMap() promotion.Repository {
 	repo := Map{
 		uuidIndex: make(map[uuid.UUID]int),
 		userIndex: make(map[uuid.UUID]int),
@@ -34,38 +35,84 @@ func NewMap() session.Repository {
 	return &repo
 }
 
-func (m *Map) Get(uuid uuid.UUID) (session.Entity, error) {
+func (m *Map) List(offset int, limit int) (promotion.Entities, error) {
+	defer m.mu.RUnlock()
+	m.mu.RLock()
+
+	lo := clamp(0, offset, len(m.repo))
+	hi := clamp(0, offset+limit, len(m.repo))
+
+	if lo >= hi {
+		return promotion.Entities{
+			Records:      []promotion.Entity{},
+			TotalRecords: len(m.repo),
+		}, nil
+	}
+
+	res := make([]promotion.Entity, hi-lo)
+	copy(res, m.repo[lo:hi])
+
+	return promotion.Entities{
+		Offset:       lo,
+		Length:       len(res),
+		Records:      res,
+		TotalRecords: len(m.repo),
+	}, nil
+}
+
+func (m *Map) Get(uuid uuid.UUID) (promotion.Entity, error) {
 	defer m.mu.RUnlock()
 	m.mu.RLock()
 
 	index, in := m.uuidIndex[uuid]
 	if !in {
-		return session.Entity{}, xerrors.ErrSessionNotFound
+		return promotion.Entity{}, xerrors.ErrPromotionNotFound
 	}
 
 	s := m.repo[index]
 	if time.Now().After(s.Expires) {
 		m.delete(s.UUID)
-		return session.Entity{}, xerrors.ErrSessionNotFound
+		return promotion.Entity{}, xerrors.ErrPromotionNotFound
 	}
 
-	return m.repo[index], nil
+	return s, nil
 }
 
-func (m *Map) Create(session session.Entity) error {
+func (m *Map) GetByUser(user uuid.UUID) (promotion.Entity, error) {
+	defer m.mu.RUnlock()
+	m.mu.RLock()
+
+	index, in := m.userIndex[user]
+	if !in {
+		return promotion.Entity{}, xerrors.ErrPromotionNotFound
+	}
+
+	s := m.repo[index]
+	if time.Now().After(s.Expires) {
+		m.delete(s.UUID)
+		return promotion.Entity{}, xerrors.ErrPromotionNotFound
+	}
+
+	return s, nil
+}
+
+func (m *Map) Create(promotion promotion.Entity) error {
 	defer m.mu.Unlock()
 	m.mu.Lock()
 
-	if index, in := m.userIndex[session.User]; in {
+	if index, in := m.userIndex[promotion.User]; in {
 		s := m.repo[index]
 		m.delete(s.UUID)
 	}
 
-	m.uuidIndex[session.UUID] = len(m.repo)
-	m.userIndex[session.User] = len(m.repo)
-	m.repo = append(m.repo, session)
+	m.uuidIndex[promotion.UUID] = len(m.repo)
+	m.userIndex[promotion.User] = len(m.repo)
+	m.repo = append(m.repo, promotion)
 
-	m.expiresHeap.new <- ess{session.UUID, session.Expires}
+	m.expiresHeap.new <- ess{
+		promotion: promotion.UUID,
+		expires:   promotion.Expires,
+	}
 
 	return nil
 }
@@ -76,13 +123,16 @@ func (m *Map) Update(uuid uuid.UUID, expires time.Time) error {
 
 	index, in := m.uuidIndex[uuid]
 	if !in {
-		return xerrors.ErrSessionNotFound
+		return xerrors.ErrPromotionNotFound
 	}
 
 	s := &m.repo[index]
 	s.Expires = expires
 
-	m.expiresHeap.new <- ess{s.UUID, expires}
+	m.expiresHeap.new <- ess{
+		promotion: s.UUID,
+		expires:   s.Expires,
+	}
 
 	return nil
 }
@@ -122,6 +172,7 @@ func flush(m *Map) {
 
 		select {
 		case <-h.cancel:
+			h.cancel <- struct{}{}
 			return
 
 		case es := <-h.new:
@@ -129,9 +180,13 @@ func flush(m *Map) {
 
 		case <-after:
 			es := h.heap.Pop()
-			m.Delete(es.session)
+			m.Delete(es.promotion)
 		}
 	}
+}
+
+func clamp[T cmp.Ordered](mn, val, mx T) T {
+	return min(max(mn, val), mx)
 }
 
 type sleepqueue struct {
@@ -141,8 +196,8 @@ type sleepqueue struct {
 }
 
 type ess struct {
-	session uuid.UUID
-	expires time.Time
+	promotion uuid.UUID
+	expires   time.Time
 }
 
 func (o0 ess) Less(o1 ess) bool { return o0.expires.Before(o1.expires) }

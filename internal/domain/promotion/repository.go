@@ -1,4 +1,4 @@
-package session
+package promotion
 
 import (
 	"time"
@@ -7,15 +7,25 @@ import (
 )
 
 type Repository interface {
+	Lister
 	Getter
+	GetterByUser
 	Creater
 	Updater
 	Deleter
 }
 
 type (
+	Lister interface {
+		List(offset, limit int) (Entities, error)
+	}
+
 	Getter interface {
 		Get(uuid.UUID) (Entity, error)
+	}
+
+	GetterByUser interface {
+		GetByUser(uuid.UUID) (Entity, error)
 	}
 
 	Creater interface {
@@ -32,6 +42,13 @@ type (
 )
 
 type (
+	Entities struct {
+		Offset       int
+		Length       int
+		Records      []Entity
+		TotalRecords int
+	}
+
 	Entity struct {
 		UUID    uuid.UUID
 		User    uuid.UUID

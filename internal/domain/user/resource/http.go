@@ -163,7 +163,7 @@ func (rc *Resource) Patch(w http.ResponseWriter, r *http.Request) {
 		resource.WriteJsonError(w, err)
 		return
 	}
-	
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -202,15 +202,7 @@ func (rc *Resource) Authenticate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     resource.SessionCookieName,
-		Value:    res.UUID.String(),
-		Expires:  res.Expires,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteLaxMode,
-	})
+	resource.SetSession(w, res.UUID, res.Expires)
 
 	if err := resource.EncodeJSON(&res, http.StatusCreated, w, r); err != nil {
 		resource.WriteJsonError(w, err)
