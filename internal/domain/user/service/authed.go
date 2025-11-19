@@ -8,14 +8,12 @@ import (
 )
 
 type AuthService struct {
-	service   user.Service
-	hierarchy auth.Hierarchy
+	user.Service
 }
 
 func New(service user.Service) user.Service {
 	return &AuthService{
-		service:   service,
-		hierarchy: auth.DefaultHierarchy,
+		Service: service,
 	}
 }
 
@@ -26,7 +24,7 @@ func (s *AuthService) List(act auth.Actor, req user.ListRequest) (user.ListRespo
 		return user.ListResponse{}, err
 	}
 
-	return s.service.List(act, req)
+	return s.Service.List(act, req)
 }
 
 func (s *AuthService) Get(act auth.Actor, req user.GetRequest) (user.Response, error) {
@@ -39,11 +37,11 @@ func (s *AuthService) Get(act auth.Actor, req user.GetRequest) (user.Response, e
 	}
 
 Do:
-	return s.service.Get(act, req)
+	return s.Service.Get(act, req)
 }
 
 func (s *AuthService) GetBySIAPE(act auth.Actor, req user.GetBySIAPERequest) (user.Response, error) {
-	res, err := s.service.GetBySIAPE(act, req)
+	res, err := s.Service.GetBySIAPE(act, req)
 	if err != nil {
 		return user.Response{}, err
 	}
@@ -65,7 +63,7 @@ func (s *AuthService) Create(act auth.Actor, req user.CreateRequest) (uuid.UUID,
 		return uuid.UUID{}, err
 	}
 
-	return s.service.Create(act, req)
+	return s.Service.Create(act, req)
 }
 
 func (s *AuthService) Patch(act auth.Actor, req user.PatchRequest) error {
@@ -78,7 +76,7 @@ func (s *AuthService) Patch(act auth.Actor, req user.PatchRequest) error {
 	}
 
 Do:
-	return s.service.Patch(act, req)
+	return s.Service.Patch(act, req)
 }
 
 func (s *AuthService) UpdatePassword(act auth.Actor, req user.UpdatePasswordRequest) error {
@@ -91,7 +89,7 @@ func (s *AuthService) UpdatePassword(act auth.Actor, req user.UpdatePasswordRequ
 	}
 
 Do:
-	return s.service.UpdatePassword(act, req)
+	return s.Service.UpdatePassword(act, req)
 }
 
 func (s *AuthService) UpdateRole(act auth.Actor, req user.UpdateRoleRequest) error {
@@ -99,7 +97,7 @@ func (s *AuthService) UpdateRole(act auth.Actor, req user.UpdateRoleRequest) err
 		return err
 	}
 
-	return s.service.UpdateRole(act, req)
+	return s.Service.UpdateRole(act, req)
 }
 
 func (s *AuthService) Delete(act auth.Actor, req user.DeleteRequest) error {
@@ -112,13 +110,5 @@ func (s *AuthService) Delete(act auth.Actor, req user.DeleteRequest) error {
 	}
 
 Do:
-	return s.service.Delete(act, req)
-}
-
-func (s *AuthService) Authenticate(req user.AuthRequest) (user.AuthResponse, error) {
-	return s.service.Authenticate(req)
-}
-
-func (s *AuthService) Actor(req user.ActorRequest) (auth.Actor, error) {
-	return s.service.Actor(req)
+	return s.Service.Delete(act, req)
 }

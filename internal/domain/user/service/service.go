@@ -2,6 +2,7 @@ package userserve
 
 import (
 	"github.com/alan-b-lima/almodon/internal/auth"
+	"github.com/alan-b-lima/almodon/internal/domain/promotion"
 	"github.com/alan-b-lima/almodon/internal/domain/session"
 	"github.com/alan-b-lima/almodon/internal/domain/user"
 	"github.com/alan-b-lima/almodon/internal/xerrors"
@@ -10,14 +11,16 @@ import (
 )
 
 type Service struct {
-	users    user.Repository
-	sessions session.Repository
+	users      user.Repository
+	sessions   session.Repository
+	promotions promotion.Repository
 }
 
-func NewService(users user.Repository, sessions session.Repository) user.Service {
+func NewService(users user.Repository, sessions session.Repository, promotions promotion.Repository) user.Service {
 	return &Service{
-		users:    users,
-		sessions: sessions,
+		users:      users,
+		sessions:   sessions,
+		promotions: promotions,
 	}
 }
 
@@ -105,8 +108,8 @@ func (s *Service) Authenticate(req user.AuthRequest) (user.AuthResponse, error) 
 	return user.AuthResponse(res), nil
 }
 
-func (s *Service) Actor(req user.ActorRequest) (auth.Actor, error) {
-	return user.Actor(s.users, s.sessions, req.Session)
+func (s *Service) Actor(session uuid.UUID) (auth.Actor, error) {
+	return user.Actor(s.users, s.sessions, s.promotions, session)
 }
 
 func transform(e *user.Entity) user.Response {

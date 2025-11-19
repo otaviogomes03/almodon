@@ -19,10 +19,10 @@ type Service interface {
 
 	Delete(act auth.Actor, req DeleteRequest) error
 
+	Authenticate(req AuthRequest) (AuthResponse, error)
 	Gatekeeper
 }
 
 type Gatekeeper interface {
-	Authenticate(req AuthRequest) (AuthResponse, error)
-	Actor(req ActorRequest) (auth.Actor, error)
+	Actor(session uuid.UUID) (auth.Actor, error)
 }

@@ -163,7 +163,7 @@ func (rc *Resource) Patch(w http.ResponseWriter, r *http.Request) {
 		resource.WriteJsonError(w, err)
 		return
 	}
-	
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -203,7 +203,7 @@ func (rc *Resource) Authenticate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.SetCookie(w, &http.Cookie{
-		Name:     resource.SessionCookieName,
+		Name:     resource.SessionCookie,
 		Value:    res.UUID.String(),
 		Expires:  res.Expires,
 		Path:     "/",
