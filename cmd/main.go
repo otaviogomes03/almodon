@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -8,8 +9,10 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/alan-b-lima/almodon/internal/api/v1"
 	"github.com/alan-b-lima/almodon/internal/middleware"
@@ -32,17 +35,25 @@ func main() {
 	url := "http://" + strings.Replace(ln.Addr().String(), "[::]", "localhost", 1)
 	log.Printf("Server listening at %s\n", style.HyperLink(url))
 
+	var mux http.ServeMux
+
 	api, err := api.New()
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return
 	}
 	defer api.Close()
 
-	srv := http.Server{Handler: TrafficLogMiddleware(log, style, api)}
-	defer srv.Shutdown(context.Background())
+	mux.Handle("/", http.FileServer(http.Dir("../ui/web/")))
+	mux.Handle("/api/", api)
+	mux.HandleFunc("/terminate/{timeout}", Terminate)
 
-	done := EnableGracefulShutdown(func() { log.Println("Shutting server down...") })
+	srv := http.Server{Handler: TrafficLogMiddleware(log, style, &mux)}
+
+	done := EnableGracefulShutdown(func() {
+		log.Println("Shutting server down...")
+		srv.Shutdown(context.Background())
+	})
 
 	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 		log.Println(err)
@@ -57,33 +68,24 @@ func TrafficLogMiddleware(log *middleware.Logger, s Style, handler http.Handler)
 
 		handler.ServeHTTP(rw, r)
 
-		var pen ansi.Pen
-		switch rw.StatusCode() / 100 {
-		case 5:
-			pen = s.ServerError
-		case 4:
-			pen = s.ClientError
-		case 3:
-			pen = s.Redirect
-		case 2:
-			pen = s.Success
+		pen := s.StatusCodePen(rw.StatusCode())
 
-		default:
-			pen.SetStyle(false)
-		}
-
-		var b strings.Builder
-		pen.Writer = &b
+		var barr [32]byte
+		b := bytes.NewBuffer(barr[:])
+		pen.Writer = b
 
 		io.WriteString(&pen, fmt.Sprintf(" %03d ", rw.StatusCode()))
 		log.Printf("%s %s %s %s\n", b.String(), r.RemoteAddr, r.Method, r.URL)
 	}
 }
 
+var Signals chan<- os.Signal
+
 func EnableGracefulShutdown(fn func()) <-chan struct{} {
 	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT)
+	Signals = signals
 
+	signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT)
 	done := make(chan struct{}, 1)
 
 	go func() {
@@ -98,44 +100,58 @@ func EnableGracefulShutdown(fn func()) <-chan struct{} {
 type Style struct {
 	HyperLink func(string) string
 
-	ServerError ansi.Pen
-	ClientError ansi.Pen
-	Redirect    ansi.Pen
-	Success     ansi.Pen
-	NoStyle     ansi.Pen
+	Pens    map[int]ansi.Pen
+	NoStyle ansi.Pen
 
 	Enabled bool
 }
 
 func Styles() (s Style) {
 	s.Enabled = ansi.EnableVirtualTerminal(os.Stdout.Fd()) == nil
+	s.NoStyle.SetStyle(false)
 
 	if s.Enabled {
-		s.Success.BGColor(ansi.RGBFromHex(0x0ed145))
-		s.Success.FGColor(ansi.RGBFromHex(0xffffff))
+		var Success ansi.Pen
+		var Redirect ansi.Pen
+		var ClientError ansi.Pen
+		var ServerError ansi.Pen
 
-		s.Redirect.BGColor(ansi.RGBFromHex(0x4b53cc))
-		s.Redirect.FGColor(ansi.RGBFromHex(0xffffff))
+		Success.BGColor(ansi.RGBFromHex(0x0ed145))
+		Success.FGColor(ansi.RGBFromHex(0xffffff))
 
-		s.ClientError.BGColor(ansi.RGBFromHex(0xea1d1d))
-		s.ClientError.FGColor(ansi.RGBFromHex(0xffffff))
+		Redirect.BGColor(ansi.RGBFromHex(0x4b53cc))
+		Redirect.FGColor(ansi.RGBFromHex(0xffffff))
 
-		s.ServerError.BGColor(ansi.RGBFromHex(0x88001b))
-		s.ServerError.FGColor(ansi.RGBFromHex(0xffffff))
+		ClientError.BGColor(ansi.RGBFromHex(0xea1d1d))
+		ClientError.FGColor(ansi.RGBFromHex(0xffffff))
 
+		ServerError.BGColor(ansi.RGBFromHex(0x88001b))
+		ServerError.FGColor(ansi.RGBFromHex(0xffffff))
+
+		s.Pens = map[int]ansi.Pen{
+			2: Success,
+			3: Redirect,
+			4: ClientError,
+			5: ServerError,
+		}
 		s.HyperLink = hyperlink
 
 		return s
 	}
 
-	s.Success.SetStyle(false)
-	s.Redirect.SetStyle(false)
-	s.ClientError.SetStyle(false)
-	s.ServerError.SetStyle(false)
-	s.NoStyle.SetStyle(false)
 	s.HyperLink = func(s string) string { return s }
+	s.Pens = map[int]ansi.Pen{}
 
 	return s
+}
+
+func (s *Style) StatusCodePen(status int) ansi.Pen {
+	pen, in := s.Pens[status/100]
+	if !in {
+		return s.NoStyle
+	}
+
+	return pen
 }
 
 func hyperlink(link string) string {
@@ -143,4 +159,18 @@ func hyperlink(link string) string {
 	pen.FGColor(ansi.RGBFromHex(0x4e8597))
 
 	return pen.Sprint(ansi.HyperLinkP(link))
+}
+
+func Terminate(w http.ResponseWriter, r *http.Request) {
+	ms, err := strconv.Atoi(r.PathValue("timeout"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+
+	go func() {
+		time.Sleep(time.Duration(ms) * time.Millisecond)
+		Signals <- syscall.SIGTERM
+	}()
+
+	w.WriteHeader(http.StatusNoContent)
 }
